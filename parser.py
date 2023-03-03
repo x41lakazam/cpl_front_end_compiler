@@ -11,15 +11,6 @@ from quad_translate import QuadTranslator
 OUTFILE = "output.quad"
 _OUTPUT_LINES = []
 
-class ParserError(Exception):
-    pass
-
-
-@dataclass
-class ReturnModel:
-    value: Any
-    start_of_block: int
-
 
 class Variable:
     def __init__(self, name, type, defined_at=None, from_block=None):
@@ -172,9 +163,9 @@ class CPLParser(Parser):
     @_('SWITCH "(" expression ")" "{" caselist DEFAULT ":" stmtlist "}"')
     def switch_stmt(self, p):
         self.translator.replace_all_switchvars(p.expression)
-        self.translator.replace_last_nextcase(self.translator.offset)
+        # Last switchcase is default, therefore delete it and the nextcase line
+        self.translator.delete_last_next_and_switch_case()
         self.translator.replace_all_breaks(f"JUMP {self.translator.offset}")
-        self.translator.replace_last_switchcase(p.DEFAULT)
         return p
 
     @_('caselist CASE NUM ":" stmtlist', '')
@@ -331,7 +322,8 @@ class CPLParser(Parser):
         if not message:
             message = f"Unexpected token '{p.value}'"
         print(f"Parser error on line {p.lineno}, chars [{p.index}, {p.end}]: {message}")
-        raise
+
+        raise Exception
 
 
 if __name__ == "__main__":
@@ -342,7 +334,7 @@ if __name__ == "__main__":
         input(a);
         input(b);
         
-        b = static_cast<int> (a) + b
+        b = static_cast<int> (a) + b;
         switch (a+b){
             case 1:
                 a = 1;

@@ -1,3 +1,5 @@
+from errors import BreakOutsideOfLoop
+
 
 class QuadTranslator:
 
@@ -222,9 +224,12 @@ class QuadTranslator:
             self._output_lines[off] = line
             off = self.last_break_tag
 
-
     def on_finish_check(self):
         for line in self._output_lines:
             if "%BREAK%" in line:
                 raise BreakOutsideOfLoop()
+
+    def delete_last_next_and_switch_case(self):
+        self._output_lines.pop(self.last_nextcase_tag)
+        self._output_lines.pop(self.last_switchcase_tag)
 
