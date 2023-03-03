@@ -223,3 +223,8 @@ class QuadTranslator:
             off = self.last_break_tag
 
 
+    def on_finish_check(self):
+        for line in self._output_lines:
+            if "%BREAK%" in line:
+                raise BreakOutsideOfLoop()
+

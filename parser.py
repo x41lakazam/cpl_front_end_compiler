@@ -4,6 +4,7 @@ from typing import Any
 
 from sly import Parser
 
+from errors import *
 from lexer import CPLLexer
 from quad_translate import QuadTranslator
 
@@ -30,12 +31,12 @@ class Variable:
 class VariablesManager:
 
     def __init__(self, quad_translator):
-        self.vars = {
-            # var_name: Variable()
-        }
+        self.vars = {}
         self.next_tmp = 0
         self.quad_translator = quad_translator
 
+    def check_var(self, varname):
+        self.get_var(varname)  # Raise error if not exist
 
     def def_var(self, varname, type, defined_at=None, from_block=None):
         # if varname in self.vars:
@@ -61,7 +62,10 @@ class VariablesManager:
         return self.get_tmp_var(like_var.type, in_block_of=in_block_of)
 
     def get_var(self, varname):
-        return self.vars[varname]
+        try:
+            return self.vars[varname]
+        except KeyError:
+            raise UnknownVariable(varname)
 
     def is_float(self, varname):
         if isinstance(varname, int):
@@ -123,13 +127,21 @@ class CPLParser(Parser):
 
     @_('ID "=" expression ";"')
     def assignment_stmt(self, p):
-        # TODO check var exist
+        try:
+            self.vars_mgr.check_var(p.ID)
+        except Exception as exc:
+            self.error(p, message=str(exc))
+
         self.translator.gen(f"IASN {p.ID} {p.expression}")
         return p
 
     @_('INPUT "(" ID ")" ";"')
     def input_stmt(self, p):
-        # TODO check var exist
+        try:
+            self.vars_mgr.check_var(p.ID)
+        except Exception as exc:
+            self.error(p, message=str(exc))
+
         self.translator.gen(f"RINP {p.ID}")
         return
 
@@ -184,7 +196,6 @@ class CPLParser(Parser):
 
     @_('BREAK ";"')
     def break_stmt(self, p):
-        # TODO
         self.translator.gen("%BREAK%")
         return p
 
@@ -288,20 +299,6 @@ class CPLParser(Parser):
         self.translator.muladd_op(p.MULOP, result_var, p.term, p.factor)
         return result_var
 
-    # @_()
-    # def cast_factor(self, p):
-    #     """Return the variable if it is already in the right type or a new variable in the right type"""
-    #     if p.CAST not in ("int", "float"):
-    #         raise ValueError(f"Invalid type {p.CAST}")
-    #
-    #     if self.vars_mgr.get_var(p).type == p.CAST:
-    #         return p
-    #
-    #     new_var = self.vars_mgr.get_tmp_var(p.CAST)
-    #     op = "ITOR" if p.CAST == 'float' else "RTOI"
-    #     self.translator.gen(f"{op} {new_var} {p.expression}")
-    #     return new_var
-
     @_('CAST "(" expression ")"', '"(" expression ")"')
     def factor(self, p):
         """Return the variable containing the factor"""
@@ -325,14 +322,16 @@ class CPLParser(Parser):
     def on_finish(self):
         self.translator.output()
 
-    def error(self, p):
+    def error(self, p, message=None):
         if not p:
             self.on_finish()
             print('End of File!')
             raise EOFError
 
-        print(f"ERROR on {p}")
-        raise SyntaxError
+        if not message:
+            message = f"Unexpected token '{p.value}'"
+        print(f"Parser error on line {p.lineno}, chars [{p.index}, {p.end}]: {message}")
+        raise
 
 
 if __name__ == "__main__":
@@ -343,7 +342,7 @@ if __name__ == "__main__":
         input(a);
         input(b);
         
-        b = static_cast<int> (a) + b;
+        b = static_cast<int> (a) + b
         switch (a+b){
             case 1:
                 a = 1;
