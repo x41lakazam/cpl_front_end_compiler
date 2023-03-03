@@ -48,8 +48,11 @@ class VariablesManager:
         varname = f"t{self.next_tmp}"
         self.next_tmp += 1
         if in_block_of:
-            from_block = self.get_block_offset(in_block_of)
-        self.def_var(varname, type, defined_at=self.quad_translator.offset+1, from_block=from_block)
+            if isinstance(in_block_of, (int, float)):       # in_block_of is not a variable
+                from_block = self.quad_translator.offset
+            else:
+                from_block = self.get_block_offset(in_block_of)
+        self.def_var(varname, type, defined_at=self.quad_translator.offset, from_block=from_block)
         return varname
 
     def get_tmp_var_like(self, like_varname, in_block_of):
@@ -90,6 +93,8 @@ class CPLParser(Parser):
 
     @_('declarations stmt_block')
     def program(self, p):
+        self.translator.remove_last_line()  # A last %ENDBLOCK% is generated, remove it
+        self.translator.gen("HALT")
         return p
 
     @_('declarations declaration', '')
@@ -133,33 +138,59 @@ class CPLParser(Parser):
         self.translator.gen(f"IPRT {p.expression}")
         return
 
-    @_('IF "(" boolexpr ")" stmt', 'IF "(" boolexpr ")" stmt ELSE stmt')
+    @_('IF "(" boolexpr ")" stmt_block', 'IF "(" boolexpr ")" stmt_block ELSE stmt_block')
     def if_stmt(self, p):
+        self.translator.remove_last_line()
+        if hasattr(p, "ELSE"):
+            endblock_offset = self.translator.replace_last_endblock(f"JUMP {self.translator.offset}")
+            self.translator.backref_offset(endblock_offset+1)
         return p
 
-    @_('WHILE "(" boolexpr ")" stmt')
+    @_('WHILE "(" boolexpr ")" stmt_block')
     def while_stmt(self, p):
         start_of_expr_block = self.vars_mgr.get_var(p.boolexpr).from_block
-        self.translator.gen(f"JUMP {start_of_expr_block}")
+        # Replace the end of the block by a jump to the beginning of the block (looping)
+        self.translator.replace_last_endblock(f"JUMP {start_of_expr_block}")
+        # Replace the %END% at the  end of the NOT-boolexpr by the end of the block (exit the loop)
+        self.translator.backref_offset(self.translator.offset)
+        # Replace break by a jump to the end of the block (exit the loop)
+        self.translator.replace_last_break(f"JUMP {self.translator.offset}")
         return p
 
     @_('SWITCH "(" expression ")" "{" caselist DEFAULT ":" stmtlist "}"')
     def switch_stmt(self, p):
-        # TODO
+        self.translator.replace_all_switchvars(p.expression)
+        self.translator.replace_last_nextcase(self.translator.offset)
+        self.translator.replace_all_breaks(f"JUMP {self.translator.offset}")
+        self.translator.replace_last_switchcase(p.DEFAULT)
         return p
 
     @_('caselist CASE NUM ":" stmtlist', '')
     def caselist(self, p):
-        # TODO
+        if not hasattr(p, "CASE"):
+            # Check if swiwtch_Var == switch_case --> jump to the next case
+            tmp_var = self.vars_mgr.get_tmp_var('int')
+            self.translator.gen(f"IEQL {tmp_var} %SWITCHVAR% %SWITCHCASE%")
+            self.translator.gen(f"JMPZ {tmp_var} %NEXTCASE%")
+            return p
+
+        #
+        tmp_var = self.vars_mgr.get_tmp_var('int')
+        self.translator.replace_last_nextcase(self.translator.offset)
+        self.translator.replace_last_switchcase(p.NUM)
+        self.translator.gen(f"IEQL {tmp_var} %SWITCHVAR% %SWITCHCASE%")
+        self.translator.gen(f"JMPZ {tmp_var} %NEXTCASE%")
         return p
 
     @_('BREAK ";"')
     def break_stmt(self, p):
         # TODO
+        self.translator.gen("%BREAK%")
         return p
 
     @_('"{" stmtlist "}"')
     def stmt_block(self, p):
+        self.translator.gen("%ENDBLOCK%")
         return p
 
     @_('stmtlist stmt', 'stmt')
@@ -170,6 +201,8 @@ class CPLParser(Parser):
     def boolexpr(self, p):
         """Return the variable containing the bool expr (type int)"""
         if not hasattr(p, "OR"):
+            # If the boolexpr is not true --> jump to the end of the block
+            self.translator.gen(f"JMPZ {p[0]} %END%")
             return p[0]
 
         res_var = self.vars_mgr.get_tmp_var("int", in_block_of=p.boolexpr)
@@ -255,22 +288,33 @@ class CPLParser(Parser):
         self.translator.muladd_op(p.MULOP, result_var, p.term, p.factor)
         return result_var
 
-    @_('"(" expression ")"')
+    # @_()
+    # def cast_factor(self, p):
+    #     """Return the variable if it is already in the right type or a new variable in the right type"""
+    #     if p.CAST not in ("int", "float"):
+    #         raise ValueError(f"Invalid type {p.CAST}")
+    #
+    #     if self.vars_mgr.get_var(p).type == p.CAST:
+    #         return p
+    #
+    #     new_var = self.vars_mgr.get_tmp_var(p.CAST)
+    #     op = "ITOR" if p.CAST == 'float' else "RTOI"
+    #     self.translator.gen(f"{op} {new_var} {p.expression}")
+    #     return new_var
+
+    @_('CAST "(" expression ")"', '"(" expression ")"')
     def factor(self, p):
         """Return the variable containing the factor"""
-        return p[0]
+        if not hasattr(p, "CAST"):
+            return p[0]
 
-    @_('CAST "(" expression ")"')
-    def cast_factor(self, p):
-        """Return the variable if it is already in the right type or a new variable in the right type"""
-        if p.CAST not in ("int", "float"):
+        if p.CAST not in ("static_cast<int>", "static_cast<float>"):
             raise ValueError(f"Invalid type {p.CAST}")
 
-        if self.vars_mgr.get_var(p).type == p.CAST:
-            return p
+        cast_type = "int" if p.CAST == "static_cast<int>" else 'float'
 
-        new_var = self.vars_mgr.get_tmp_var(p.CAST)
-        op = "ITOR" if p.CAST == 'float' else "RTOI"
+        new_var = self.vars_mgr.get_tmp_var(cast_type)
+        op = "ITOR" if cast_type == 'float' else "RTOI"
         self.translator.gen(f"{op} {new_var} {p.expression}")
         return new_var
 
@@ -279,7 +323,6 @@ class CPLParser(Parser):
         return p[0]
 
     def on_finish(self):
-        self.translator.gen("HALT")
         self.translator.output()
 
     def error(self, p):
@@ -299,8 +342,40 @@ if __name__ == "__main__":
     {
         input(a);
         input(b);
-        while (a+b>5)
+        
+        b = static_cast<int> (a) + b;
+        switch (a+b){
+            case 1:
+                a = 1;
+                output(a);
+            case 2:
+                a = 2;
+                output(a);
+            case 3:
+                a = 3;
+                output(a);
+                break;
+            default:
+                a = 10;
+                output(a);
+        }
+        
+        if (a>5+b) {
             b = b+5;
+            a = b;
+            output(b);
+        }
+        else {
+            b = b +3;
+            output(a);
+        }
+        
+        while (a+b>3){
+            a = 1;
+            break;
+            b = 2;
+        }
+            
     } 
     """
 
