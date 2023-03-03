@@ -5,9 +5,11 @@ class QuadTranslator:
         self._output_lines = []
         self.outfile = outfile
 
-    def output(self):
+    def output(self, with_index=True):
         with open(self.outfile, 'w') as fp:
-            for l in self._output_lines:
+            for ix, l in enumerate(self._output_lines):
+                if with_index:
+                    l = f"{ix+1}:\t{l}"
                 fp.write(f"{l}\n")
 
         print(f"Wrote output in {self.outfile}")

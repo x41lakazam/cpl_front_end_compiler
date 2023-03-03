@@ -17,16 +17,15 @@ class ParserError(Exception):
 @dataclass
 class ReturnModel:
     value: Any
-    tree: Any
-    start_of_block: int = -1
+    start_of_block: int
 
 
 class Variable:
-    def __init__(self, name, type, defined_at=None, in_block_from=None):
+    def __init__(self, name, type, defined_at=None, from_block=None):
         self.name = name
         self.type = type
         self.defined_at = defined_at
-        self.in_block_from = in_block_from
+        self.from_block = from_block
 
 class VariablesManager:
 
@@ -38,36 +37,40 @@ class VariablesManager:
         self.quad_translator = quad_translator
 
 
-    def def_var(self, varname, type, defined_at=None, in_block_from=None):
+    def def_var(self, varname, type, defined_at=None, from_block=None):
         # if varname in self.vars:
         #     raise ValueError(f"Variable {varname} previously defined")
 
-        variable = Variable(varname, type, defined_at, in_block_from)
+        variable = Variable(varname, type, defined_at, from_block)
         self.vars[varname] = variable
 
-    def get_tmp_var(self, type, in_block_from=None):
+    def get_tmp_var(self, type, from_block=None, in_block_of=None):
         varname = f"t{self.next_tmp}"
         self.next_tmp += 1
-        self.def_var(varname, type, defined_at=self.quad_translator.offset, in_block_from=in_block_from)
+        if in_block_of:
+            from_block = self.get_block_offset(in_block_of)
+        self.def_var(varname, type, defined_at=self.quad_translator.offset+1, from_block=from_block)
         return varname
 
-    def get_tmp_var_like(self, like_varname):
+    def get_tmp_var_like(self, like_varname, in_block_of):
         """Get temp variable of the same type as <like_varname>"""
-        var = self.get_var(like_varname)
-        return self.get_tmp_var(var.type)
+        like_var = self.get_var(like_varname)
+        return self.get_tmp_var(like_var.type, in_block_of=in_block_of)
 
     def get_var(self, varname):
         return self.vars[varname]
 
     def is_float(self, varname):
-        # varname may just be an int/float, in this case just return type
         if isinstance(varname, int):
             return False
-        if isinstance(varname, float):
+        elif isinstance(varname, float):
             return True
 
-        # No, varname is really a variable name
         return self.get_var(varname).type == 'float'
+
+    def get_block_offset(self, varname):
+        var = self.get_var(varname)
+        return var.from_block or var.defined_at
 
 
 class CPLParser(Parser):
@@ -87,119 +90,120 @@ class CPLParser(Parser):
 
     @_('declarations stmt_block')
     def program(self, p):
-        return ReturnModel(tree=p.tree, value=p)
+        return p
 
     @_('declarations declaration', '')
     def declarations(self, p):
-        if hasattr(p, 'declaration'):
-            return ReturnModel(tree=p, value=p)
-        return ReturnModel(tree=p, value=p)
+        return p
 
     @_('idlist ":" type ";"')
     def declaration(self, p):
-        for var_name in p.idlist.value:
-            self._def_var(var_name, p.type.value)
-
-        return ReturnModel(tree=p, value=p)
+        for var_name in p.idlist:
+            self._def_var(var_name, p.type)
+        return
 
     @_('INT', 'FLOAT')
     def type(self, p):
-        return ReturnModel(tree=p, value=p[0].lower())
+        return p[0].lower()
 
     @_('idlist "," ID', 'ID')
     def idlist(self, p):
-        if not hasattr(p, 'idlist'):
-            return ReturnModel(tree=p, value=[p[0]])
-
-        idlist = p.idlist.value
+        idlist = getattr(p, "idlist", [])
         idlist.append(p.ID)
-        return ReturnModel(tree=p, value=idlist)
+        return idlist
 
     @_('assignment_stmt', 'input_stmt', 'output_stmt', 'if_stmt', 'while_stmt', 'switch_stmt', 'break_stmt', 'stmt_block')
     def stmt(self, p):
-        return ReturnModel(tree=p, value=p)
+        return p
 
     @_('ID "=" expression ";"')
     def assignment_stmt(self, p):
         # TODO check var exist
-        self.translator.gen(f"IASN {p.ID} {p.expression.value}")
-        return ReturnModel(tree=p.tree, value=p)
+        self.translator.gen(f"IASN {p.ID} {p.expression}")
+        return p
 
     @_('INPUT "(" ID ")" ";"')
     def input_stmt(self, p):
         # TODO check var exist
         self.translator.gen(f"RINP {p.ID}")
-        return ReturnModel(tree=p, value=p)
+        return
 
     @_('OUTPUT "(" expression ")" ";"')
     def output_stmt(self, p):
-        self.translator.gen(f"IPRT {p.expression.value}")
-        return ReturnModel(tree=p.tree, value=p)
+        self.translator.gen(f"IPRT {p.expression}")
+        return
 
     @_('IF "(" boolexpr ")" stmt', 'IF "(" boolexpr ")" stmt ELSE stmt')
     def if_stmt(self, p):
-        return ReturnModel(tree=p.tree, value=p)
+        return p
 
     @_('WHILE "(" boolexpr ")" stmt')
     def while_stmt(self, p):
-        return ReturnModel(tree=p.tree, value=p)
+        start_of_expr_block = self.vars_mgr.get_var(p.boolexpr).from_block
+        self.translator.gen(f"JUMP {start_of_expr_block}")
+        return p
 
     @_('SWITCH "(" expression ")" "{" caselist DEFAULT ":" stmtlist "}"')
     def switch_stmt(self, p):
         # TODO
-        return ReturnModel(tree=p.tree, value=p)
+        return p
 
     @_('caselist CASE NUM ":" stmtlist', '')
     def caselist(self, p):
         # TODO
-        return ReturnModel(tree=p.tree, value=p)
+        return p
 
     @_('BREAK ";"')
     def break_stmt(self, p):
         # TODO
-        return ReturnModel(tree=p.tree, value=p)
+        return p
 
     @_('"{" stmtlist "}"')
     def stmt_block(self, p):
-        return ReturnModel(tree=p.tree, value=p)
+        return p
 
     @_('stmtlist stmt', 'stmt')
     def stmtlist(self, p):
-        return ReturnModel(tree=p, value=p)
+        return p
 
     @_('boolexpr OR boolterm', 'boolterm')
     def boolexpr(self, p):
         """Return the variable containing the bool expr (type int)"""
         if not hasattr(p, "OR"):
-            return ReturnModel(tree=p.tree, value=p[0])
+            return p[0]
 
-        boolexpr_var = self.vars_mgr.get_var(p.boolexpr.value)
-        block_start = boolexpr_var.in_block_from or boolexpr_var.defined_at
-        res_var = self.vars_mgr.get_tmp_var("int", in_block_from=block_start)
-        self.translator.or_(res_var, p.boolexpr.value, p.boolterm.value)
-        return ReturnModel(tree=p.tree, value=res_var)
+        res_var = self.vars_mgr.get_tmp_var("int", in_block_of=p.boolexpr)
+        self.translator.or_(res_var, p.boolexpr, p.boolterm)
+        return res_var
 
     @_('boolterm AND boolfactor', 'boolfactor')
     def boolterm(self, p):
         """Return the variable containing the bool expr (type int)"""
         if not hasattr(p, "AND"):
-            return ReturnModel(tree=p.tree, value=p[0])
+            return p[0]
 
-        boolterm_var = self.vars_mgr.get_var(p.boolterm.value)
-        block_start = boolterm_var.in_block_from or boolterm_var.defined_at
-        res_var = self.vars_mgr.get_tmp_var("int", in_block_from=block_start)
-        self.translator.and_(res_var, p.boolterm.value, p.boolfactor.value)
-        return ReturnModel(tree=p.tree, value=res_var)
+        res_var = self.vars_mgr.get_tmp_var("int", in_block_of=p.boolterm)
+        self.translator.and_(res_var, p.boolterm, p.boolfactor)
+        return res_var
 
     @_('NOT "(" boolexpr ")"', 'expression RELOP expression')
     def boolfactor(self, p):
         """Return the variable containing the expression (type int)"""
         if hasattr(p, "NOT"):
-            result_var = self.vars_mgr.get_tmp_var_like(p.boolexpr.value)
+            result_var = self.vars_mgr.get_tmp_var_like(p.boolexpr)
             self.translator.gen(f"REQL {p.boolexpr} {result_var} 0")
-            return ReturnModel(tree=p.tree, value=result_var)
+            return result_var
 
-        exp0, exp1 = p.expression0.value, p.expression1.value
+        # Get offset of expr block
+        if isinstance(p.expression0, int) or isinstance(p.expression0, float):
+            if isinstance(p.expression1, int) or isinstance(p.expression1, float):
+                expr_block = self.translator.offset
+            else:
+                expr_block = self.vars_mgr.get_block_offset(p.expression1)
+        else:
+            expr_block = self.vars_mgr.get_block_offset(p.expression0)
+
+        exp0, exp1 = p.expression0, p.expression1
         if self.vars_mgr.is_float(exp0) and not self.vars_mgr.is_float(exp1):
             # exp0 is a float but exp1 is an int
             exp1_as_float = self.vars_mgr.get_tmp_var('float')
@@ -211,67 +215,68 @@ class CPLParser(Parser):
             exp0 = exp0_as_float
         # else they are both int or both float
 
-        result_var = self.vars_mgr.get_tmp_var('int')  # Result is a bool represented by an int
+        result_var = self.vars_mgr.get_tmp_var('int', from_block=expr_block)  # Result is a bool represented by an int
         self.translator.relop(p.RELOP, result_var, exp0, exp1)
 
-        return ReturnModel(tree=p, value=result_var)
+        return result_var
 
     @_('expression ADDOP term', 'term')
     def expression(self, p):
         """Return a variable containing the expression result"""
         if not hasattr(p, "ADDOP"):
-            return ReturnModel(tree=p.tree, value=p.term.value)
+            return p.term
 
         # Create result variable
-        if self.vars_mgr.is_float(p.term.value) or self.vars_mgr.is_float(p.expression.value):
+        if self.vars_mgr.is_float(p.term) or self.vars_mgr.is_float(p.expression):
             result_var_type = 'float'
         else:
             result_var_type = int
-        result_var = self.vars_mgr.get_tmp_var(result_var_type) # TODO check type
+        result_var = self.vars_mgr.get_tmp_var(result_var_type, in_block_of=p.expression) # TODO check type
 
-        self.translator.muladd_op(p.ADDOP, result_var, p.expression.value, p.term.value)
+        self.translator.muladd_op(p.ADDOP, result_var, p.expression, p.term)
 
-        return ReturnModel(tree=p.tree, value=result_var)
+        return result_var
 
     @_('term MULOP factor', 'factor')
     def term(self, p):
         """Return a variable containing the expression result"""
         if not hasattr(p, "MULOP"):
-            return ReturnModel(tree=p, value=p.factor.value)
+            return p.factor
 
         # Create result variable
-        if self.vars_mgr.is_float(p.term.value) or self.vars_mgr.is_float(p.factor.value):
+        if self.vars_mgr.is_float(p.term) or self.vars_mgr.is_float(p.factor):
             result_var_type = 'float'
         else:
             result_var_type = 'int'
-        result_var = self.vars_mgr.get_tmp_var(result_var_type) # TODO check type
+
+        result_var = self.vars_mgr.get_tmp_var(result_var_type, in_block_of=p.term) # TODO check type
 
         # Generate quad line
-        self.translator.muladd_op(p.MULOP.value, result_var, p.term.value, p.factor.value)
-        return ReturnModel(tree=p.tree, value=result_var)
+        self.translator.muladd_op(p.MULOP, result_var, p.term, p.factor)
+        return result_var
 
     @_('"(" expression ")"')
     def factor(self, p):
         """Return the variable containing the factor"""
-        return ReturnModel(tree=p.tree, value=p[0])
+        return p[0]
 
     @_('CAST "(" expression ")"')
     def cast_factor(self, p):
         """Return the variable if it is already in the right type or a new variable in the right type"""
-        if p.CAST.value not in ("int", "float"):
-            raise ValueError(f"Invalid type {p.CAST.value}")
+        if p.CAST not in ("int", "float"):
+            raise ValueError(f"Invalid type {p.CAST}")
 
-        if self.vars_mgr.get_var(p).type == p.CAST.value:
-            return ReturnModel(tree=p.tree, value=p)
+        if self.vars_mgr.get_var(p).type == p.CAST:
+            return p
 
-        new_var = self.vars_mgr.get_tmp_var(p.CAST.value)
-        op = "ITOR" if p.CAST.value == 'float' else "RTOI"
+        new_var = self.vars_mgr.get_tmp_var(p.CAST)
+        op = "ITOR" if p.CAST == 'float' else "RTOI"
         self.translator.gen(f"{op} {new_var} {p.expression}")
-        return ReturnModel(tree=p.tree, value=new_var)
+        return new_var
 
     @_('ID', 'NUM')
     def factor(self, p):
-        return ReturnModel(tree=p, value=p[0])
+        return p[0]
 
     def on_finish(self):
         self.translator.gen("HALT")
@@ -294,15 +299,8 @@ if __name__ == "__main__":
     {
         input(a);
         input(b);
-        
-        while (a+b<5)
-            b = b + 5;
-            
-        if (a<b)
-            output(a);
-        else
-            output(b);
-        
+        while (a+b>5)
+            b = b+5;
     } 
     """
 
