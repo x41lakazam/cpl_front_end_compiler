@@ -1,0 +1,40 @@
+a, b: float;
+
+{
+    input(a);
+    input(b);
+
+    b = static_cast<int> (a) + b;
+    switch (a+b){
+        case 1:
+            a = 1;
+            output(a);
+        case 2:
+            a = 2;
+            output(a);
+        case 3:
+            a = 3;
+            output(a);
+            break;
+        default:
+            a = 10;
+            output(a);
+    }
+
+    if (a>5+b) {
+        b = b+5;
+        a = b;
+        output(b);
+    }
+    else {
+        b = b +3;
+        output(a);
+    }
+
+    while (a+b>3){
+        a = 1;
+        break;
+        b = 2;
+    }
+
+}
