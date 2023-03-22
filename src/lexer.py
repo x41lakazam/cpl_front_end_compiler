@@ -2,10 +2,10 @@
 program -> declarations stmt_block
 declarations -> declarations declaration
 | epsilon
-declaration -> idlist ':' type ';'
+declaration -> id_list ':' type ';'
 type -> INT
 | FLOAT
-idlist -> idlist ',' ID
+id_list -> id_list ',' ID
 | ID
 stmt -> assignment_stmt
 | input_stmt
@@ -55,7 +55,7 @@ digit = [0-9]
 
 class CPLLexer(Lexer):
     ignore = ' \t'
-    ignore_comment = r'/\*[^(\*/)]+\*/'
+    ignore_comment = r'/\*.+?\*/'
 
     #tokens = set(t.value for t in Tokens)
     # tokens = {IF, BREAK, CASE, DEFAULT, ELSE, FLOAT, IF, INPUT, INT, OUTPUT, STATIC_CAST, SWITCH, WHILE,
@@ -88,7 +88,7 @@ class CPLLexer(Lexer):
     _EQLESS = "<="
     _EQGREATER = ">="
 
-    RELOP = f"{_EQUAL}|{_NEQUAL}|{_LESS}|{_GREATER}|{_EQLESS}|{_EQGREATER}"
+    RELOP = f"{_EQUAL}|{_NEQUAL}|{_EQLESS}|{_EQGREATER}|{_LESS}|{_GREATER}"
 
     # ADDOP
     _PLUS = f"\+"
@@ -108,7 +108,7 @@ class CPLLexer(Lexer):
     NOT = "!"
 
     ID = rf"[a-zA-Z][a-zA-Z0-9]*"
-    NUM = rf"[0-9]+(?:.[0-9]+)?"
+    NUM = rf"\d+(?:\.\d+)?"
 
     literals = {'(', ')', '{', '}', ',', ':', ';', '='}
 
