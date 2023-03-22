@@ -1,0 +1,24 @@
+/* basic switch implementation */
+a: int;
+{
+  input(a);
+  switch (a)
+  {
+    case 1:
+        output(a);
+        break;
+    case 2:
+        output(100);
+        break;
+    default:
+        output(500);
+  }
+  output(1000);
+
+  while (a < 5)
+  {
+    a = a - 1;
+    if (a == 6) {break;}
+  }
+  output(2000);
+}

@@ -1,12 +1,19 @@
 from __future__ import annotations
+from sly.lex import Token
 
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Union
 
 
+
 @dataclass
 class Expr:
     pass
+
+
+@dataclass
+class ErrorToken(Expr):
+    token: Token
 
 @dataclass
 class Program(Expr):

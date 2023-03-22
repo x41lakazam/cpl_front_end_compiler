@@ -2,6 +2,9 @@ class BaseExc(Exception):
     pass
 
 
+class SyntaxException(Exception):
+    pass
+
 class UnknownVariable(BaseExc):
     def __init__(self, varname):
         message = f"Undefined variable {varname}"

@@ -1,7 +1,7 @@
 import sys
 from lexer import CPLLexer
 from ast_parser import CPLParser
-from src.symbol_table import resolve_offsets
+from symbol_table import resolve_offsets
 from transformer import AstToQuad
 
 
@@ -23,7 +23,10 @@ def compile(filename=None, outfile=None):
     lexer = CPLLexer()
     ast = parser.parse(lexer.tokenize(text))
     quad_transformer = AstToQuad(ast)
-    quad_lines = quad_transformer.compute()
+    quad_lines, failed = quad_transformer.compute()
+
+    if failed:
+        return
 
     # Offsets need to be updated
     quad_lines = resolve_offsets(quad_lines)
@@ -32,21 +35,29 @@ def compile(filename=None, outfile=None):
         l+'\n' for l in quad_lines
     )
 
+    return outfile
+
 
 def main():
     tests = [
-        "tests/andor.cpl",
-        "tests/cnv.cpl",
-        "tests/sqrt.cpl",
-        "tests/div.cpl",
-        "tests/cast.cpl",
-        "tests/primes.cpl",
-        "tests/sin.cpl",
-        "tests/basic.cpl",
-        "tests/binary.cpl",
-        "tests/fibo.cpl",
+        "andor.cpl",
+        "cnv.cpl",
+        "sqrt.cpl",
+        "div.cpl",
+        "cast.cpl",
+        "primes.cpl",
+        "sin.cpl",
+        "basic.cpl",
+        "binary.cpl",
+        "fibo.cpl",
+        "mytest.cpl",
+        "easyswitch.cpl",
+        "nested_switch.ou",
     ]
-    compile(tests[9], "output.quad")
+    for test in tests:
+        print("Compiling", test)
+        compile("tests/"+test, f"tests/{test}.quad")
+
 
 if __name__ == '__main__':
     main()

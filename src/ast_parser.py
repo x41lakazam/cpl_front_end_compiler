@@ -14,6 +14,7 @@ _OUTPUT_LINES = []
 
 
 
+
 class CPLParser(Parser):
     """Return the CPL program as AST of models"""
 
@@ -187,20 +188,15 @@ class CPLParser(Parser):
     def factor(self, p) -> NUM:
         return NUM(p[0])
 
-    def on_finish(self, outfile=None):
-        self.translator.output(file=outfile)
-
     def error(self, p, message=None):
         if not p:
-            self.on_finish()
             print('End of File!')
             raise EOFError
 
         if not message:
             message = f"Unexpected token '{p.value}'"
-        print(f"Parser error on line {p.lineno}, chars [{p.index}, {p.end}]: {message}")
+        raise SyntaxException(f"Parser error on line {p.lineno}, chars [{p.index}, {p.end}]: {message}")
 
-        raise Exception
 
     def parse(self, tokens):
         ast = super().parse(tokens)
@@ -208,38 +204,11 @@ class CPLParser(Parser):
 
 
 if __name__ == "__main__":
-#     text = """
-# {   /* should print 7788 */
-#
-#    if (10 >= 2 || 10 > 100)
-#        output(7);
-#    else
-#        output(8);
-#
-#    if (4 < 2 || 13 >= 12)
-#        output(7);
-#    else
-#        output(8);
-#
-#   if (9 > 0 && 4 < 2 || 12 >= 20)
-#          output(7);
-#   else
-#          output(8);
-#
-# """
-    text = """
-  if (! (12 > 9))
-         output(7);
-  else
-         output(8);
-}
-     
-    """
 
     parser = CPLParser()
     lexer = CPLLexer()
     try:
-        #text = input("calc > ")
+        text = input("calc > ")
         result = parser.parse(lexer.tokenize(text))
         parser.on_finish()
         print(result)

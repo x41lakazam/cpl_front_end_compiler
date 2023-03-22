@@ -4,7 +4,19 @@ To compile a CPL file, run `python compile.py path/to/cpl_file`.
 The quad code will be generated in a file called "outfile.quad"
 
 
-Example of compiling this CPL code:
+### How it works
+
+1- The lexer first generate tokens based on the CPL grammar, it is defined in `lexer.py`
+2- The parser defined in `parser.py` generate an AST of tokens, each token is a custom type defined in `models.py`  
+3- The transformer defined in `transformer.py` transform this AST into quadruple code, following simple logic, some special variables 
+are inserted during this transformation and are replaced later, they are marked with a % symbol at the beginning, 
+for example %+OFFSET is replaced by the line <line-no + OFFSET>
+
+
+When a syntax/parsing error is detected, an error will be thrown, the parser will continue to parse the next statements
+and throw other errors if there are.
+
+### Example of compiling this CPL code:
 ```
 a, b: float;
 

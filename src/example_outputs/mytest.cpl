@@ -1,0 +1,10 @@
+a, b: float;
+{
+ a = 5;
+ b = 3;
+
+ if (a < b)
+    output(a);
+ else
+    output(b);
+}

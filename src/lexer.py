@@ -124,7 +124,6 @@ class CPLLexer(Lexer):
     def newline(self, t):
         self.lineno+=1
 
-
     def error(self, t):
         print('Line %d: Bad character %r' % (self.lineno, t.value[0]))
         self.index += 1
