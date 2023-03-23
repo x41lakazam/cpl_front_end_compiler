@@ -1,3 +1,5 @@
+"""Custom tokens models"""
+
 from __future__ import annotations
 from sly.lex import Token
 
@@ -8,12 +10,9 @@ from typing import Any, List, Optional, Union
 
 @dataclass
 class Expr:
+    """Errors could be improved by passing the token to the model, so that we could print the line number :)"""
     pass
 
-
-@dataclass
-class ErrorToken(Expr):
-    token: Token
 
 @dataclass
 class Program(Expr):
